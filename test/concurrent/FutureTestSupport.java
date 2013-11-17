@@ -94,6 +94,10 @@ public class FutureTestSupport {
         return future( () -> f );
     }
 
+    protected <A,B> Future<funct.on1<A,B>> pure( funct.on1<A,B> f ){
+        return future( () -> f );
+    }
+
 
     protected <T> Control nextControl(){
         return controls.get( nextFreeControl.getAndIncrement() );
