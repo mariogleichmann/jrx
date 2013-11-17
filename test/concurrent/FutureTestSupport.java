@@ -27,6 +27,8 @@ public class FutureTestSupport {
     protected volatile ControlState control_1_state;
     protected volatile ControlState control_2_state;
     protected volatile ControlState control_3_state;
+    protected volatile ControlState control_4_state;
+    protected volatile ControlState control_5_state;
 
     protected volatile AtomicInteger counter;
 
@@ -50,6 +52,16 @@ public class FutureTestSupport {
             protected ControlState state() { return control_3_state; }
             protected void set( ControlState newState ) { control_3_state = newState; }
         });
+
+        add( new Control(){
+            protected ControlState state() { return control_4_state; }
+            protected void set( ControlState newState ) { control_4_state = newState; }
+        });
+
+        add( new Control(){
+            protected ControlState state() { return control_5_state; }
+            protected void set( ControlState newState ) { control_5_state = newState; }
+        });
     }};
 
 
@@ -66,6 +78,8 @@ public class FutureTestSupport {
         control_1_state = WAITING;
         control_2_state = WAITING;
         control_3_state = WAITING;
+        control_4_state = WAITING;
+        control_5_state = WAITING;
     }
 
 
