@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.*;
 
-public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallable.CompletionListener<T>{
+public class FutureImpl<T> implements Future<T>, ObservableCallable.CompletionListener<T>{
 
 	protected ExecutorService executor = null;
 	
@@ -35,7 +35,7 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
 	}
 	
 
-	public jrx.concurrent.Future<T> recover( funct.on1<Throwable,? extends T> recoveryAction ){
+	public Future<T> recover( funct.on1<Throwable,? extends T> recoveryAction ){
 		
 		FutureImpl<T> recoveryPromise = newFuture( executor );
 		
@@ -45,7 +45,7 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
 	}
 	
 
-	public jrx.concurrent.Future<T> recoverWith( funct.on1<Throwable, jrx.concurrent.Future<? extends T>> recoveryWithAction ){
+	public Future<T> recoverWith( funct.on1<Throwable, Future<? extends T>> recoveryWithAction ){
 		
 		FutureImpl<T> recoveryWithPromise = newFuture( executor );
 		
@@ -55,16 +55,32 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
 	}
 
 
-	public <B> jrx.concurrent.Future<B> apply( jrx.concurrent.Future<on1<T,B>> liftedMapper ){
+	public <B> Future<B> apply( Future<funct.on1<T,B>> liftedFunction ){
 		
-		final jrx.concurrent.Future<T> self = this;
+		final Future<T> self = this;
 		
-		return liftedMapper.flatMap( f -> self.map( f ) );
+		return liftedFunction.flatMap( f -> self.map( f ) );
 	}
-	
+
+    public static <A,B,C>  Applier<A,B,C> on( Future<funct.on2<A,B,C>> f ){
+        return new Applier<A,B,C>( f );
+    }
+
+    public static class Applier<A,B,C>{
+
+        private Future<funct.on2<A,B,C>> func;
+
+        public Applier( Future<funct.on2<A,B,C>> f ){
+            this.func = f;
+        }
+
+        public Future<C> applyTo( Future<A> futureA, Future<B> futureB ){
+            return futureB.apply( futureA.apply(func.map(f -> f.curry())));
+        }
+    }
 	
 
-	public <B> jrx.concurrent.Future<B> map( final funct.on1<? super T,B> mapper ){
+	public <B> Future<B> map( final funct.on1<? super T,B> mapper ){
 		
 		FutureImpl<B> mappedPromise = newFuture( executor );
 		
@@ -74,7 +90,7 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
 	}	
 	
 
-	public <B> jrx.concurrent.Future<B> flatMap( final funct.on1<? super T, jrx.concurrent.Future<B>> flatMapFunction ){
+	public <B> Future<B> flatMap( final funct.on1<? super T, Future<B>> flatMapFunction ){
 		
 		FutureImpl<B> flatMappedPromise = newFuture( executor );
 		
@@ -119,16 +135,16 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
 		}
 	}
 
-    public static <A> jrx.concurrent.Future<A> reduce( List<jrx.concurrent.Future<A>> futures, funct.on2<A,A,A> reducer, ExecutorService executor ){
+    public static <A> Future<A> reduce( List<Future<A>> futures, funct.on2<A,A,A> reducer, ExecutorService executor ){
 
         if( futures.isEmpty() ) return FutureImpl.<A,NoSuchElementException> failed( new NoSuchElementException(), executor );
 
         if( futures.size() == 1 ) return futures.get( 0 );
 
 
-        jrx.concurrent.Future<on1<A,on1<A,A>>> liftedCurriedReducer = pure( reducer.curry(), executor );
+        Future<on1<A,funct.on1<A,A>>> liftedCurriedReducer = pure( reducer.curry(), executor );
 
-        jrx.concurrent.Future<A> acc = futures.get( 0 );
+        Future<A> acc = futures.get( 0 );
 
         for( int i = 1; i < futures.size(); i++ ){
 
@@ -139,14 +155,14 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
     }
 
 	
-	public static <A,B> jrx.concurrent.Future<B> fold( List<jrx.concurrent.Future<A>> futures, B seed, funct.on2<A,B,B> reducer, ExecutorService executor ){
+	public static <A,B> Future<B> fold( List<Future<A>> futures, B seed, funct.on2<A,B,B> reducer, ExecutorService executor ){
 		
 		if( futures.isEmpty() ) return pure( seed, executor );
 
-        jrx.concurrent.Future<on1<A, on1<B,B>>> liftedCurriedReducer = pure( reducer.curry(), executor );
+        Future<on1<A, on1<B,B>>> liftedCurriedReducer = pure( reducer.curry(), executor );
 
 		
-		jrx.concurrent.Future<B> acc = pure( seed, executor );
+		Future<B> acc = pure( seed, executor );
 		
 		for( int i = 0; i < futures.size(); i++ ){
 			
@@ -157,7 +173,7 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
 	}
 	
 	
-	public static <A> jrx.concurrent.Future<List<A>> sequence( List<jrx.concurrent.Future<A>> futures, ExecutorService executor  ){
+	public static <A> Future<List<A>> sequence( List<Future<A>> futures, ExecutorService executor  ){
 
 		return fold( futures, (List<A>) new ArrayList<A>(), FutureImpl.<A>append(), executor );
 	}
@@ -169,23 +185,17 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
         };
     }
 
-	
-	/**
-	 * Factory-Methode
-	 * 
-	 * Erzeugt eine neue Future-Instanz zum uebergebenen Callable und bringt dieses mit Hilfe
-	 * des uebergebenen Executors zur Ausfuehrung 
-	 */
+
 	public static <A> FutureImpl<A> futureFor( Callable<A> callable, ExecutorService executor ){
 		return execute( (FutureImpl<A>) newFuture( executor ), callable );
 	}
 	
 	
-	public static <B> jrx.concurrent.Future<B> pure( B value, ExecutorService executor ){
+	public static <B> Future<B> pure( B value, ExecutorService executor ){
 		return new PureValueFuture<B>( value, executor );
 	}
 	
-	private static <B,E extends Throwable> jrx.concurrent.Future<B> failed(  E exception, ExecutorService executor ){
+	private static <B,E extends Throwable> Future<B> failed(  E exception, ExecutorService executor ){
 		return PureExceptionFuture.<B,E>newFor(exception, executor);
 	}
 	
@@ -255,8 +265,7 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
         	}
         }				
 	}
-	
-	@SuppressWarnings("serial")
+
     private static final class OnFailureAction<T> implements Action<Try<T>>{
 		
 		private Action<Throwable> callback;
@@ -276,13 +285,13 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
 	
 	private static class RecoveryAction<T> implements Action<Try<T>>{
 		
-		private jrx.concurrent.Future<?> origin;
+		private Future<?> origin;
 		
 		private FutureImpl<T> promise;
 		
 		private funct.on1<Throwable,? extends T> recoveryAction;
 		
-		public RecoveryAction(jrx.concurrent.Future<?> origin, FutureImpl<T> promise, final funct.on1<Throwable, ? extends T> recoveryAction){
+		public RecoveryAction(Future<?> origin, FutureImpl<T> promise, final funct.on1<Throwable, ? extends T> recoveryAction){
 			this.origin = origin;
 			this.promise = promise;
 			this.recoveryAction = recoveryAction;
@@ -305,13 +314,13 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
 	
 	private static class MapAction<T,B> implements Action<Try<T>>{
 		
-		private jrx.concurrent.Future<?> origin;
+		private Future<?> origin;
 		
 		private FutureImpl<B> promise;
 		
 		private funct.on1<? super T,B> mapFunction;
 		
-		public MapAction(jrx.concurrent.Future<?> origin, FutureImpl<B> promise, funct.on1<? super T, B> mapFunction){
+		public MapAction(Future<?> origin, FutureImpl<B> promise, funct.on1<? super T, B> mapFunction){
 			this.origin = origin;
 			this.promise = promise;
 			this.mapFunction = mapFunction;
@@ -334,14 +343,14 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
 	
 	private static class FlatMapAction<T,B> implements Action<Try<T>>{
 		
-		private jrx.concurrent.Future<?> origin;
+		private Future<?> origin;
 		
 		private FutureImpl<B> promise;
 
-		private funct.on1<? super T, jrx.concurrent.Future<B>> flatmapFunction;
+		private funct.on1<? super T, Future<B>> flatmapFunction;
 		
 		
-		public FlatMapAction(jrx.concurrent.Future<?> origin, FutureImpl<B> promise, funct.on1<? super T, jrx.concurrent.Future<B>> flatmapFunction){
+		public FlatMapAction(Future<?> origin, FutureImpl<B> promise, funct.on1<? super T, Future<B>> flatmapFunction){
 			this.origin = origin;
 			this.promise = promise;
 			this.flatmapFunction = flatmapFunction;
@@ -351,7 +360,7 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
 
         	if( t.isSuccess() ){
         	
-        		jrx.concurrent.Future<B> resultingFuture = flatmapFunction._( t.value() );
+        		Future<B> resultingFuture = flatmapFunction._( t.value() );
         		
         		promise.delegate = resultingFuture;
         		
@@ -368,11 +377,11 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
 	
 	private static class RecoveryWithAction<T> implements Action<Try<T>>{
 		
-		private jrx.concurrent.Future<T> origin;
+		private Future<T> origin;
 		private FutureImpl<T> promise;
-		private funct.on1<Throwable, jrx.concurrent.Future<? extends T>> recoveryWithAction;
+		private funct.on1<Throwable, Future<? extends T>> recoveryWithAction;
 
-		public RecoveryWithAction(jrx.concurrent.Future<T> origin, FutureImpl<T> promise, funct.on1<Throwable, jrx.concurrent.Future<? extends T>> recoveryWithAction){
+		public RecoveryWithAction(Future<T> origin, FutureImpl<T> promise, funct.on1<Throwable, Future<? extends T>> recoveryWithAction){
 			this.origin = origin;
 			this.promise = promise;
 			this.recoveryWithAction = recoveryWithAction;
@@ -382,7 +391,7 @@ public class FutureImpl<T> implements jrx.concurrent.Future<T>, ObservableCallab
 
         	if( t.isFailure() ){
             	
-        		jrx.concurrent.Future<T> resultingFuture = (Future<T>) recoveryWithAction._( t.getException() );
+        		Future<T> resultingFuture = (Future<T>) recoveryWithAction._( t.getException() );
         		
         		promise.delegate = resultingFuture;
         		
